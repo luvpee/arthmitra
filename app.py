@@ -170,6 +170,105 @@ with st.sidebar:
     st.markdown("### ⚠️ Upcoming")
     st.error("College Fees: ₹15,000 due in 3 weeks")
 
+# PDF Upload Section
+st.markdown("### 📄 Upload Bank Statement")
+
+uploaded_file = st.file_uploader(
+    "Upload your bank statement PDF",
+    type="pdf",
+    help="We'll automatically extract and store all your transactions"
+)
+
+if uploaded_file is not None:
+    if st.button("🔍 Process Statement"):
+        with st.spinner("Reading your bank statement..."):
+
+            # Save uploaded file temporarily
+            import tempfile
+            import fitz
+            import uuid
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(uploaded_file.read())
+                tmp_path = tmp.name
+
+            # Extract text
+            doc = fitz.open(tmp_path)
+            raw_text = ""
+            for page in doc:
+                raw_text += page.get_text()
+            doc.close()
+
+            # Extract transactions with Gemini
+            parse_prompt = f"""
+You are a bank statement parser. Extract all transactions from this text.
+Return ONLY a JSON array with this format:
+[
+  {{"date": "DD-Mon-YY", "description": "description", "amount": 000, "type": "expense or income"}},
+]
+Amount always positive. Type is exactly "expense" or "income".
+Text:
+{raw_text}
+"""
+            result = call_gemini(parse_prompt)
+
+            if result:
+                try:
+                    result = result.replace("```json","").replace("```","").strip()
+                    transactions = json.loads(result)
+
+                    # Store each transaction
+                    stored = 0
+                    for txn in transactions:
+                        try:
+                            food_kw = ["swiggy","zomato","dominos","canteen","food"]
+                            transport_kw = ["bus","uber","ola","metro","auto"]
+                            education_kw = ["college","book","stationery","library"]
+                            shopping_kw = ["amazon","flipkart","myntra","shop"]
+                            entertainment_kw = ["netflix","spotify","movie","fest"]
+                            health_kw = ["gym","medical","pharmacy","doctor"]
+
+                            desc_lower = txn["description"].lower()
+                            if any(k in desc_lower for k in food_kw):
+                                category = "food"
+                            elif any(k in desc_lower for k in transport_kw):
+                                category = "transport"
+                            elif any(k in desc_lower for k in education_kw):
+                                category = "education"
+                            elif any(k in desc_lower for k in shopping_kw):
+                                category = "shopping"
+                            elif any(k in desc_lower for k in entertainment_kw):
+                                category = "entertainment"
+                            elif any(k in desc_lower for k in health_kw):
+                                category = "health"
+                            else:
+                                category = "other"
+
+                            doc_text = f"{'Received' if txn['type'] == 'income' else 'Spent'} ₹{txn['amount']} on {txn['description']} on {txn['date']}"
+                            collection.add(
+                                documents=[doc_text],
+                                metadatas=[{
+                                    "amount": float(txn["amount"]),
+                                    "category": category,
+                                    "type": txn["type"],
+                                    "date": txn["date"]
+                                }],
+                                ids=[f"pdf_{uuid.uuid4().hex[:8]}"]
+                            )
+                            stored += 1
+                        except:
+                            pass
+
+                    st.success(f"✅ Successfully imported {stored} transactions from your bank statement!")
+                    st.rerun()
+
+                except Exception as e:
+                    st.error("Could not parse the statement. Please try again.")
+            else:
+                st.error("Having trouble connecting. Please try again.")
+
+st.divider()
+
 # Chat interface
 st.markdown("### 💬 Chat with ArthMitra")
 
