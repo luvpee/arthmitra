@@ -2,3 +2,6 @@
 arthmitra_memory/
 __pycache__/
 *.pyc
+temp.pdf
+sample_statement.pdf
+create_sample_pdf.py
