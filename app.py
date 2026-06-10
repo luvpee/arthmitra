@@ -4,9 +4,19 @@ from google import genai
 import time
 import json
 import os
+import uuid
 from dotenv import load_dotenv
+from supabase import create_client
 
 load_dotenv()
+
+# Initialize clients
+GEMINI_KEY = os.getenv("GOOGLE_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+gemini_client = genai.Client(api_key=GEMINI_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Page config
 st.set_page_config(
@@ -47,33 +57,39 @@ st.markdown("""
 # Setup
 @st.cache_resource
 def setup():
-    api_key = os.getenv("GOOGLE_API_KEY")
-    client = genai.Client(api_key=api_key)
-    chroma_client = chromadb.PersistentClient(path="./arthmitra_memory")
+    chroma_client = chromadb.Client()  # in-memory chromadb
     collection = chroma_client.get_or_create_collection(name="arthmitra_ui")
 
-    # Add starting transactions
-    transactions = [
-        ("Swiggy food delivery", 350, "food", "expense"),
-        ("Dominos pizza", 280, "food", "expense"),
-        ("Bus fare", 200, "transport", "expense"),
-        ("College canteen", 150, "food", "expense"),
-        ("Stationery", 100, "education", "expense"),
-        ("Amazon earphones", 1200, "shopping", "expense"),
-        ("Pocket money from dad", 5000, "income", "income"),
-    ]
+    # Load existing transactions from Supabase into ChromaDB
+    try:
+        response = supabase.table("transactions").select("*").execute()
+        transactions = response.data
 
-    for i, (desc, amount, category, txn_type) in enumerate(transactions):
-        try:
-            collection.add(
-                documents=[f"{'Received' if txn_type == 'income' else 'Spent'} ₹{amount} on {desc}"],
-                metadatas=[{"amount": amount, "category": category, "type": txn_type}],
-                ids=[f"ui_txn_{i}"]
-            )
-        except:
-            pass
+        if transactions:
+            for txn in transactions:
+                try:
+                    collection.add(
+                        documents=[txn["document"]],
+                        metadatas=[{
+                            "amount": txn["amount"],
+                            "category": txn["category"],
+                            "type": txn["type"],
+                            "date": txn["date"]
+                        }],
+                        ids=[txn["id"]]
+                    )
+                except:
+                    pass
+            print(f"✅ Loaded {len(transactions)} transactions from Supabase")
+        else:
+            print("📭 No existing transactions found")
 
-    return client, collection
+    except Exception as e:
+        print(f"Error loading from Supabase: {e}")
+
+    return gemini_client, collection
+
+client, collection = setup()
 
 client, collection = setup()
 
@@ -245,6 +261,21 @@ Text:
                                 category = "other"
 
                             doc_text = f"{'Received' if txn['type'] == 'income' else 'Spent'} ₹{txn['amount']} on {txn['description']} on {txn['date']}"
+                            txn_id = str(uuid.uuid4())
+                            doc_text = f"{'Received' if txn['type'] == 'income' else 'Spent'} ₹{txn['amount']} on {txn['description']} on {txn['date']}"
+
+                            # Save to Supabase permanently
+                            supabase.table("transactions").insert({
+                                "id": txn_id,
+                                "description": txn["description"],
+                                "amount": float(txn["amount"]),
+                                "category": category,
+                                "type": txn["type"],
+                                "date": txn["date"],
+                                "document": doc_text
+                            }).execute()
+
+                            # Also add to ChromaDB for semantic search
                             collection.add(
                                 documents=[doc_text],
                                 metadatas=[{
@@ -253,9 +284,11 @@ Text:
                                     "type": txn["type"],
                                     "date": txn["date"]
                                 }],
-                                ids=[f"pdf_{uuid.uuid4().hex[:8]}"]
+                                ids=[txn_id]
                             )
                             stored += 1
+                            
+                            
                         except:
                             pass
 
