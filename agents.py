@@ -23,6 +23,8 @@ class ArthMitraState(TypedDict):
     ai_response: str
     alerts: list
     predictions: dict
+    monthly_budget: float
+    upcoming_expenses: list  # Changed from string to list
 
 # ─── LLM ───────────────────────────────────────────────
 llm = ChatGoogleGenerativeAI(
@@ -30,6 +32,7 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0.1
 )
+
 # ─── NODE 1: ROUTER AGENT ──────────────────────────────
 def router_node(state: ArthMitraState) -> ArthMitraState:
     message = state["user_message"]
@@ -168,6 +171,13 @@ def prediction_node(state: ArthMitraState) -> ArthMitraState:
     income = state["income"]
     expense = state["expense"]
     categories = state["categories"]
+    upcoming_list = state.get("upcoming_expenses", [])
+
+    # Format the upcoming expenses list cleanly for the prompt
+    upcoming_str = "\n".join([
+        f"- {exp['description']}: ₹{exp['amount']:,.0f} due on {exp['due_date']}" 
+        for exp in upcoming_list
+    ]) if upcoming_list else "No known upcoming big expenses."
 
     # Get recent transactions for pattern analysis
     context = "No transactions yet"
@@ -191,6 +201,9 @@ Current financial data:
 - Spending by category:
 {cat_summary}
 
+KNOWN UPCOMING EXPENSES:
+{upcoming_str}
+
 Recent transactions:
 {context}
 
@@ -198,12 +211,11 @@ User question: {question}
 
 Analyze the spending patterns and provide:
 1. Current spending velocity — are they spending fast or slow?
-2. Prediction — based on current patterns, what will their balance be in 2 weeks? 1 month?
+2. Prediction — balance forecast for 2 weeks and 1 month (factoring in the upcoming expenses).
 3. Which category is most likely to cause financial stress?
-4. One specific actionable recommendation to improve the forecast
+4. One specific actionable recommendation to prepare for upcoming bills.
 
-Be specific with numbers and dates. Be honest even if the prediction is concerning.
-Answer in 4-5 lines.
+Be specific with numbers and dates. Be honest even if the prediction is concerning. Answer in 4-5 lines.
 """
     response = llm.invoke([HumanMessage(content=prompt)])
     return {**state,
@@ -300,7 +312,7 @@ def build_graph():
 arthmitra_graph = build_graph()
 
 # ─── MAIN ENTRY POINT ──────────────────────────────────
-def process_message(user_message, user_id, collection, income, expense, categories):
+def process_message(user_message, user_id, collection, income, expense, categories, monthly_budget, upcoming_expenses):
     initial_state = {
         "user_message": user_message,
         "intent": "",
@@ -312,7 +324,9 @@ def process_message(user_message, user_id, collection, income, expense, categori
         "transaction_data": {},
         "ai_response": "",
         "alerts": [],
-        "predictions": {}
+        "predictions": {},
+        "monthly_budget": monthly_budget,
+        "upcoming_expenses": upcoming_expenses
     }
 
     result = arthmitra_graph.invoke(initial_state)

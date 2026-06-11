@@ -6,13 +6,21 @@ from dotenv import load_dotenv
 load_dotenv()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
 
-def sign_up(email, password):
+def sign_up(email, password, full_name):
     try:
         response = supabase.auth.sign_up({
             "email": email,
             "password": password
         })
-        return response.user, None
+        user = response.user
+        
+        # If the user was successfully created in Supabase Auth,
+        # immediately create their profile entry in our custom table!
+        if user:
+            from database import save_user_profile
+            save_user_profile(user.id, 5000, full_name) # Default starting budget = ₹5000
+            
+        return user, None
     except Exception as e:
         return None, str(e)
 
@@ -80,19 +88,23 @@ def show_login_page():
 
     with tab2:
         st.markdown("### Create your account")
+        # ── NEW CODE: Added Full Name input box ──
+        new_name = st.text_input("Full Name", key="signup_name", placeholder="e.g. Rahul Sharma")
         new_email = st.text_input("Email", key="signup_email")
         new_password = st.text_input("Password", type="password", key="signup_password")
         confirm_password = st.text_input("Confirm Password", type="password", key="confirm_password")
 
         if st.button("Sign Up", use_container_width=True, type="primary"):
-            if new_email and new_password and confirm_password:
+            # Check if all fields (including name) are filled
+            if new_name and new_email and new_password and confirm_password:
                 if new_password != confirm_password:
                     st.error("Passwords don't match!")
                 elif len(new_password) < 6:
                     st.error("Password must be at least 6 characters")
                 else:
                     with st.spinner("Creating account..."):
-                        user, error = sign_up(new_email, new_password)
+                        # Pass new_name along to the updated sign_up function
+                        user, error = sign_up(new_email, new_password, new_name)
                         if user:
                             st.success("Account created! Please login. 🎉")
                         else:

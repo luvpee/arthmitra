@@ -4,6 +4,7 @@ from database import load_chromadb, get_summary, save_transaction
 from ai import detect_intent, extract_transaction, get_ai_answer
 from pdf_parser import parse_pdf
 from utils import categorize
+from database import get_user_profile, save_user_profile, get_upcoming_expenses, add_upcoming_expense, delete_upcoming_expense
 
 st.set_page_config(page_title="ArthMitra", page_icon="💰", layout="centered")
 
@@ -43,27 +44,50 @@ else:
     income, expense, categories = get_summary(user_id)
     balance = income - expense
 
+    # ── FETCH DATA BEFORE SIDEBAR ──
+    if "profile" not in st.session_state:
+        st.session_state.profile = get_user_profile(user_id)
+    
+    monthly_budget = st.session_state.profile.get("monthly_budget", 5000)
+    upcoming_expenses = get_upcoming_expenses(user_id)
+
+    # (Assuming income, expense, categories, and balance are already calculated here)
+    
+    # ── FETCH DATA BEFORE SIDEBAR ──
+    if "profile" not in st.session_state:
+        st.session_state.profile = get_user_profile(user_id)
+    
+    monthly_budget = st.session_state.profile.get("monthly_budget", 5000)
+    current_name = st.session_state.profile.get("full_name", "Mitra")
+    upcoming_expenses = get_upcoming_expenses(user_id)
+
     with st.sidebar:
-        # ── Profile Section ──
-        with st.expander("👤 My Profile", expanded=True):
-            st.markdown(f"**{st.session_state.user.email}**")
-            monthly_budget = st.number_input(
-                "Monthly Budget (₹)",
-                value=5000,
-                step=500,
-                key="monthly_budget"
-            )
-            upcoming_expense = st.text_input(
-                "Upcoming Big Expense",
-                "College fees ₹15000 in 3 weeks",
-                key="upcoming_expense"
-            )
-            if st.button("Logout", use_container_width=True):
-                sign_out()
+        # ── 1. Clean Profile Section ──
+        st.markdown(f"## Hey, {current_name}! 👋")
+        st.caption(f"📧 {st.session_state.user.email}")
+        if st.button("🚪 Logout", use_container_width=True):
+            sign_out()
 
         st.divider()
 
-        # ── Financial Summary ──
+        # ── 2. Dedicated Budget Configuration ──
+        st.markdown("### 🎯 Budget Planning")
+        new_budget = st.number_input(
+            "Set Monthly Budget Limit (₹)",
+            value=int(monthly_budget),
+            step=500,
+            key="budget_input"
+        )
+        if st.button("💾 Update Budget", use_container_width=True, type="secondary"):
+            # Update database with the new budget while keeping the same name
+            save_user_profile(user_id, new_budget, current_name)
+            st.session_state.profile["monthly_budget"] = new_budget
+            st.success("Budget limit updated! 🎯")
+            st.rerun()
+
+        st.divider()
+
+        # ── 3. Financial Summary ──
         st.markdown("### 📊 Financial Summary")
 
         budget_used = (expense / monthly_budget * 100) if monthly_budget > 0 else 0
@@ -87,14 +111,40 @@ else:
 
         st.divider()
 
-        # ── Spending Breakdown ──
+        # ── 4. Upcoming Expenses Form ──
+        st.markdown("### 📅 Upcoming Expenses")
+        with st.form("upcoming_expense_form", clear_on_submit=True):
+            exp_desc = st.text_input("Item Description", placeholder="e.g., Exam Fees")
+            exp_amt = st.number_input("Amount (₹)", min_value=0, step=100)
+            exp_date = st.date_input("Due Date")
+            if st.form_submit_button("➕ Add Expense"):
+                if exp_desc and exp_amt > 0:
+                    add_upcoming_expense(user_id, exp_desc, exp_amt, exp_date)
+                    st.rerun()
+
+        # Display the list of upcoming expenses with Delete buttons
+        if upcoming_expenses:
+            for exp in upcoming_expenses:
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(f"**{exp['description']}**\n₹{exp['amount']:,.0f} | {exp['due_date']}")
+                with col2:
+                    if st.button("❌", key=f"del_{exp['id']}"):
+                        delete_upcoming_expense(exp['id'])
+                        st.rerun()
+        else:
+            st.caption("No upcoming expenses listed.")
+
+        st.divider()
+
+        # ── 5. Spending Breakdown ──
         if categories:
             st.markdown("### 📂 Spending Breakdown")
             for cat, amt in sorted(categories.items(),
                                 key=lambda x: x[1], reverse=True):
                 pct = (amt / expense * 100) if expense > 0 else 0
                 st.markdown(f"**{cat.title()}** — ₹{amt:,.0f} ({pct:.0f}%)")
-
+                
     st.markdown("### 📄 Upload Bank Statement")
     uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
@@ -152,8 +202,9 @@ else:
                 try:
                     from agents import process_message
                     income, expense, categories = get_summary(user_id)
+                    # Pass all the new variables to the agent
                     response_text, agent_used, alerts = process_message(
-                        prompt, user_id, collection, income, expense, categories
+                    prompt, user_id, collection, income, expense, categories, monthly_budget, upcoming_expenses
                     )
                     if not response_text:
                         raise Exception("No response")

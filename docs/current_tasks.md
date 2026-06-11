@@ -51,35 +51,9 @@ Last updated: June 11, 2026
 
 ## 🔄 IN PROGRESS
 
-### User Profile System
-- [ ] Connect monthly_budget input to Supabase user_profiles table
-  - database.py has get_user_profile() and save_user_profile() ready
-  - Need to add to app.py: load profile on login, save on button click
-  - Need to add "💾 Save Profile" button in sidebar
-
-### Upcoming Expenses Feature
-- [ ] Add upcoming expenses UI to sidebar
-  - Form: description + amount + due_date + Add button
-  - List: show all upcoming with delete button
-  - database.py has get_upcoming_expenses(), add_upcoming_expense(), delete_upcoming_expense() ready
-  - Need sidebar UI in app.py
-
-- [ ] Pass upcoming expenses LIST to Prediction Agent
-  - Currently passing single string upcoming_expense
-  - Should pass full list from Supabase
-  - Update agents.py process_message() signature
-  - Update prediction_node() to use list
-
 ---
 
 ## 📋 TODO (Next Steps)
-
-### High Priority
-- [ ] Fix upcoming_expense in state — change from string to list
-- [ ] Add upcoming expenses sidebar UI
-- [ ] Load/save user profile from Supabase on login
-- [ ] Push all changes to GitHub
-- [ ] Redeploy on Streamlit Cloud
 
 ### Medium Priority
 - [ ] Remove debug agent caption from UI (st.caption showing agent name)
@@ -105,9 +79,8 @@ See bugs.md for details.
 
 ## 📁 Files to Update Next Session
 
-1. **app.py** — Add upcoming expenses UI + load user profile on login
-2. **agents.py** — Update upcoming_expense from string to list in state + prediction_node
-3. **database.py** — Already has all functions ready, no changes needed
+1.Showing which agent has answered the question, the workflow should be clear (for e.g if the user asks about prediction, the prediction
+agent should be answering that)
 
 ## How to Continue in New Chat
 1. Share this file + architecture.md + api_contracts.md

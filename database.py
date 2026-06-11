@@ -70,22 +70,51 @@ def get_user_profile(user_id):
         result = supabase.table("user_profiles").select("*").eq("user_id", user_id).execute()
         if result.data:
             return result.data[0]
-        return {"monthly_budget": 5000}
+        # Default fallback if profile doesn't exist yet
+        return {"monthly_budget": 5000, "full_name": "Mitra"}
     except:
-        return {"monthly_budget": 5000}
+        return {"monthly_budget": 5000, "full_name": "Mitra"}
 
-def save_user_profile(user_id, monthly_budget):
+def save_user_profile(user_id, monthly_budget, full_name="Mitra"):
     try:
         existing = supabase.table("user_profiles").select("*").eq("user_id", user_id).execute()
         if existing.data:
             supabase.table("user_profiles").update({
                 "monthly_budget": monthly_budget,
+                "full_name": full_name,
                 "updated_at": "now()"
             }).eq("user_id", user_id).execute()
         else:
             supabase.table("user_profiles").insert({
                 "user_id": user_id,
-                "monthly_budget": monthly_budget
+                "monthly_budget": monthly_budget,
+                "full_name": full_name
             }).execute()
+    except:
+        pass
+    
+def get_upcoming_expenses(user_id):
+    try:
+        result = supabase.table("upcoming_expenses").select("*").eq("user_id", user_id).order("due_date").execute()
+        return result.data or []
+    except:
+        return []
+
+def add_upcoming_expense(user_id, description, amount, due_date):
+    try:
+        import uuid
+        supabase.table("upcoming_expenses").insert({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "description": description,
+            "amount": float(amount),
+            "due_date": str(due_date)
+        }).execute()
+    except:
+        pass
+
+def delete_upcoming_expense(expense_id):
+    try:
+        supabase.table("upcoming_expenses").delete().eq("id", expense_id).execute()
     except:
         pass
