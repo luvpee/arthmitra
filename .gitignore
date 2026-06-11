@@ -5,3 +5,4 @@ __pycache__/
 temp.pdf
 sample_statement.pdf
 create_sample_pdf.py
+docs/codebase.md

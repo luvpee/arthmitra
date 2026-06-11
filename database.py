@@ -64,3 +64,28 @@ def save_transaction(user_id, collection, description, amount, category, txn_typ
     except:
         pass
     return txn_id
+
+def get_user_profile(user_id):
+    try:
+        result = supabase.table("user_profiles").select("*").eq("user_id", user_id).execute()
+        if result.data:
+            return result.data[0]
+        return {"monthly_budget": 5000}
+    except:
+        return {"monthly_budget": 5000}
+
+def save_user_profile(user_id, monthly_budget):
+    try:
+        existing = supabase.table("user_profiles").select("*").eq("user_id", user_id).execute()
+        if existing.data:
+            supabase.table("user_profiles").update({
+                "monthly_budget": monthly_budget,
+                "updated_at": "now()"
+            }).eq("user_id", user_id).execute()
+        else:
+            supabase.table("user_profiles").insert({
+                "user_id": user_id,
+                "monthly_budget": monthly_budget
+            }).execute()
+    except:
+        pass
